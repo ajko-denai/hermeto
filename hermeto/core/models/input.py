@@ -305,6 +305,7 @@ class NpmPackageInput(_PackageInputBase):
     """Accepted input for a npm package."""
 
     type: Literal["npm"]
+    allow_binary: bool = False
 
 
 class PipPackageInput(_PackageInputBase):

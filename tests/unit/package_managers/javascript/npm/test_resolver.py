@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
+import io
 import json
 import os
+import tarfile
 import urllib.parse
 from typing import Any
 from unittest import mock
@@ -579,3 +581,84 @@ def test_npm_proxy_url_gets_substituted_for_registry_hosts(
     for patch_call in mock_patch_url_to_point_to_proxy.call_args_list:
         assert patch_call.args[0] in deps_to_download
         assert str(patch_call.args[1]) == proxy_url
+
+
+def _write_prebuilt_tarball(path: os.PathLike[str]) -> None:
+    with tarfile.open(path, mode="w:gz") as tar:
+        content = b"native"
+        info = tarfile.TarInfo(name="package/prebuilds/linux-x64/addon.node")
+        info.size = len(content)
+        tar.addfile(info, io.BytesIO(content))
+
+
+@mock.patch("hermeto.core.package_managers.javascript.npm.resolver.async_download_with_auth")
+@mock.patch("hermeto.core.package_managers.javascript.npm.resolver.must_match_any_checksum")
+@mock.patch("hermeto.core.checksum.ChecksumInfo.from_sri")
+@mock.patch("hermeto.core.package_managers.javascript.npm.resolver.get_config")
+def test_get_npm_dependencies_rejects_prebuilt_binaries_by_default(
+    mocked_config: mock.Mock,
+    mock_from_sri: mock.Mock,
+    mock_must_match_any_checksum: mock.Mock,
+    mock_async_download_with_auth: mock.Mock,
+    rooted_tmp_path: RootedPath,
+) -> None:
+    mocked_config.return_value = mock.Mock(
+        npm=mock.Mock(proxy_url=None, proxy_login=None, proxy_password=None),
+        runtime=mock.Mock(concurrency_limit=1),
+    )
+    mock_from_sri.return_value = ("sha512", "fake-digest")
+
+    def _download(
+        files_without_auth: dict[str, Any], files_with_auth: dict[str, Any], auth: Any
+    ) -> None:
+        for download_path in files_without_auth.values():
+            _write_prebuilt_tarball(download_path)
+
+    mock_async_download_with_auth.side_effect = _download
+
+    deps_to_download: dict[str, dict[str, str | None]] = {
+        "https://registry.npmjs.org/debstep/-/debstep-1.1.1.tgz": {
+            "name": "debstep",
+            "version": "1.1.1",
+            "integrity": "sha512-fake",
+        },
+    }
+
+    with pytest.raises(PackageRejected, match="ships prebuilt native binaries"):
+        _get_npm_dependencies(rooted_tmp_path, deps_to_download)
+
+
+@mock.patch("hermeto.core.package_managers.javascript.npm.resolver.async_download_with_auth")
+@mock.patch("hermeto.core.package_managers.javascript.npm.resolver.must_match_any_checksum")
+@mock.patch("hermeto.core.checksum.ChecksumInfo.from_sri")
+@mock.patch("hermeto.core.package_managers.javascript.npm.resolver.get_config")
+def test_get_npm_dependencies_allows_prebuilt_binaries_when_opted_in(
+    mocked_config: mock.Mock,
+    mock_from_sri: mock.Mock,
+    mock_must_match_any_checksum: mock.Mock,
+    mock_async_download_with_auth: mock.Mock,
+    rooted_tmp_path: RootedPath,
+) -> None:
+    mocked_config.return_value = mock.Mock(
+        npm=mock.Mock(proxy_url=None, proxy_login=None, proxy_password=None),
+        runtime=mock.Mock(concurrency_limit=1),
+    )
+    mock_from_sri.return_value = ("sha512", "fake-digest")
+
+    def _download(
+        files_without_auth: dict[str, Any], files_with_auth: dict[str, Any], auth: Any
+    ) -> None:
+        for download_path in files_without_auth.values():
+            _write_prebuilt_tarball(download_path)
+
+    mock_async_download_with_auth.side_effect = _download
+
+    deps_to_download: dict[str, dict[str, str | None]] = {
+        "https://registry.npmjs.org/debstep/-/debstep-1.1.1.tgz": {
+            "name": "debstep",
+            "version": "1.1.1",
+            "integrity": "sha512-fake",
+        },
+    }
+
+    _get_npm_dependencies(rooted_tmp_path, deps_to_download, allow_binary=True)

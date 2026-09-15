@@ -18,6 +18,7 @@ from hermeto.core.package_managers.general import async_download_files, patch_ur
 from hermeto.core.package_managers.javascript.js_utils import (
     clone_repo_pack_archive,
     parse_git_clone_url,
+    reject_prebuilt_binaries_if_disallowed,
 )
 from hermeto.core.package_managers.javascript.npm.project import (
     PackageLock,
@@ -68,7 +69,10 @@ async def async_download_with_auth(
 
 
 def _get_npm_dependencies(
-    download_dir: RootedPath, deps_to_download: dict[str, dict[str, str | None]]
+    download_dir: RootedPath,
+    deps_to_download: dict[str, dict[str, str | None]],
+    *,
+    allow_binary: bool = False,
 ) -> dict[NormalizedUrl, RootedPath]:
     """
     Download npm dependencies.
@@ -157,6 +161,19 @@ def _get_npm_dependencies(
         else:
             log.warning("Missing integrity for %s, integrity check skipped.", url)
 
+    for url, info in deps_to_download.items():
+        normalized_url = normalize_resolved_url(url)
+        if classify_resolved_url(normalized_url) == "file":
+            continue
+        tarball_path = download_paths.get(normalized_url)
+        if tarball_path is None:
+            continue
+        reject_prebuilt_binaries_if_disallowed(
+            info["name"] or url,
+            tarball_path.path,
+            allow_binary=allow_binary,
+        )
+
     return download_paths
 
 
@@ -242,7 +259,12 @@ def _update_package_json_files(
     return package_json_projectfiles
 
 
-def _resolve_npm(pkg_path: RootedPath, npm_deps_dir: RootedPath) -> ResolvedNpmPackage:
+def _resolve_npm(
+    pkg_path: RootedPath,
+    npm_deps_dir: RootedPath,
+    *,
+    allow_binary: bool = False,
+) -> ResolvedNpmPackage:
     """Resolve and fetch npm dependencies for the given package.
 
     :param pkg_path: the path to the directory containing npm-shrinkwrap.json or package-lock.json
@@ -281,7 +303,9 @@ def _resolve_npm(pkg_path: RootedPath, npm_deps_dir: RootedPath) -> ResolvedNpmP
     # Download dependencies via resolved URLs and return download_paths for updating
     # package-lock.json with local file paths
     download_paths = _get_npm_dependencies(
-        npm_deps_dir, package_lock.get_dependencies_to_download()
+        npm_deps_dir,
+        package_lock.get_dependencies_to_download(),
+        allow_binary=allow_binary,
     )
 
     # Update package-lock.json, package.json(s) files with local paths to dependencies and store them as ProjectFiles

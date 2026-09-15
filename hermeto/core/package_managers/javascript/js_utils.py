@@ -2,6 +2,7 @@
 """Common utilities shared between JavaScript package managers (npm, yarn)."""
 
 import re
+import tarfile
 from functools import cached_property
 from pathlib import Path
 from typing import Annotated
@@ -16,7 +17,7 @@ from pydantic import (
     field_validator,
 )
 
-from hermeto.core.errors import UnexpectedFormat
+from hermeto.core.errors import PackageRejected, UnexpectedFormat
 from hermeto.core.rooted_path import RootedPath
 from hermeto.core.scm import clone_as_tarball
 
@@ -124,6 +125,48 @@ def parse_git_clone_url(url: str, ref: str | None = None) -> GitCloneUrl:
         )
 
     return clone_url
+
+
+def package_has_prebuilt_binaries(tarball_path: Path) -> bool:
+    """Return whether an npm package tarball ships prebuilt native binaries.
+
+    Packages built with tools such as prebuildify ship platform-specific ``.node``
+    files under a ``prebuilds/`` directory. Hermeto uses this check to decide
+    whether a dependency conflicts with source-only prefetch policy.
+
+    :param tarball_path: path to a ``.tgz`` archive downloaded from a registry or VCS
+    """
+    if not tarball_path.is_file():
+        return False
+
+    with tarfile.open(tarball_path) as tar:
+        for member in tar.getmembers():
+            parts = Path(member.name).parts
+            if "prebuilds" in parts:
+                return True
+            if member.isfile() and member.name.endswith(".node"):
+                return True
+    return False
+
+
+def reject_prebuilt_binaries_if_disallowed(
+    package_name: str,
+    tarball_path: Path,
+    *,
+    allow_binary: bool,
+) -> None:
+    """Raise if a tarball ships prebuilt binaries and the user did not opt in."""
+    if allow_binary or not package_has_prebuilt_binaries(tarball_path):
+        return
+
+    raise PackageRejected(
+        f"Package {package_name!r} ships prebuilt native binaries",
+        solution=(
+            "Set 'allow_binary': true in the package input to permit prefetching "
+            "packages with prebuilt binaries, or replace the dependency with a "
+            "source-only alternative."
+        ),
+    )
 
 
 def clone_repo_pack_archive(

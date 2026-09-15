@@ -395,8 +395,8 @@ class TestRequest:
             "packages": [
                 {"type": "gomod", "path": Path(".")},
                 {"type": "gomod", "path": Path("subpath")},
-                {"type": "npm", "path": Path(".")},
-                {"type": "npm", "path": Path("subpath")},
+                {"type": "npm", "path": Path("."), "allow_binary": False},
+                {"type": "npm", "path": Path("subpath"), "allow_binary": False},
                 {
                     "type": "pip",
                     "path": Path("."),

@@ -8,7 +8,7 @@ from urllib.parse import ParseResult, urljoin, urlparse
 import pydantic
 from packageurl import PackageURL
 from pydantic import HttpUrl
-from typing_extensions import Self
+from typing import Self
 
 from hermeto.core.config import get_config
 from hermeto.core.constants import Mode

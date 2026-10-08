@@ -17,7 +17,7 @@ import requests
 from requests import Session
 from requests.adapters import HTTPAdapter
 from requests.auth import AuthBase
-from typing_extensions import Self
+from typing import Self
 from urllib3.connectionpool import ConnectionPool
 from urllib3.response import BaseHTTPResponse
 from urllib3.util.retry import Retry

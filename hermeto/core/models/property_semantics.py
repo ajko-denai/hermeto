@@ -9,7 +9,7 @@ import pydantic
 from hermeto import APP_NAME
 
 if TYPE_CHECKING:
-    from typing_extensions import Self, assert_never
+    from typing import Self, assert_never
 
 
 class PropertyEnum(str, Enum):

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeVar, Union
 
 import pydantic
-from typing_extensions import Self
+from typing import Self
 
 from hermeto import APP_NAME
 from hermeto.core.errors import InvalidInput

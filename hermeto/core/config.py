@@ -21,7 +21,7 @@ from pydantic_settings import (
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
-from typing_extensions import Self
+from typing import Self
 
 from hermeto import APP_NAME
 from hermeto.core.constants import Mode

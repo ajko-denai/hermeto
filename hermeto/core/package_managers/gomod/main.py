@@ -22,7 +22,7 @@ from hermeto import APP_NAME
 from hermeto.core.constants import Mode
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 from hermeto.core.config import get_config
 from hermeto.core.errors import (
@@ -92,7 +92,7 @@ class ParsedModule(_ParsedModel):
     version: str | None = None
     main: bool = False
     replace: Optional["ParsedModule"] = None
-    origin: Optional[ParsedOrigin] = None
+    origin: ParsedOrigin | None = None
 
 
 class ParsedPackage(_ParsedModel):

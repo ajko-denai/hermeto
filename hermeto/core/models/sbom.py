@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import pydantic
 from more_itertools import first_true, flatten
 from packageurl import PackageURL
-from typing_extensions import Self
+from typing import Self
 
 from hermeto import APP_NAME
 from hermeto.core.errors import UnexpectedFormat

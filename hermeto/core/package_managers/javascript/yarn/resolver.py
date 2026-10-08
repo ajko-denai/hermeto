@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     # Import conditionally so that we don't have to introduce a runtime dependency on
     # typing-extensions. This is only imported when a type-checker is running.
     # In python 3.11, it can be imported directly from the stdlib 'typing' module.
-    from typing_extensions import assert_never
+    from typing import assert_never
 
 log = logging.getLogger(__name__)
 

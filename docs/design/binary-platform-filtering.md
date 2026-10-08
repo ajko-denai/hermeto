@@ -121,13 +121,12 @@ hermeto fetch-deps '{
     "binary": {
       "os": "linux,macosx",
       "arch": "x86_64,arm64",
-      "py_version": "310,311,312",
+      "py_version": "311,312",
       "py_impl": "cp"
     }
   }
 ```
   Matches wheels for:
-  - ✅ torch-2.7.1-cp310-cp310-manylinux_2_28_x86_64.whl (linux + x86_64 + py310 + cp)
   - ✅ torch-2.7.1-cp311-none-macosx_11_0_arm64.whl (macosx + arm64 + py311 + cp)
   - ✅ torch-2.7.1-cp312-cp312-manylinux_2_28_x86_64.whl (linux + x86_64 + py312 + cp)
   - ❌ torch-2.7.1-cp39-none-macosx_11_0_arm64.whl (Python 3.9 not in version list)
@@ -178,7 +177,6 @@ The pip backend will be updated to filter Python wheels based on user-provided p
   Matches torch 2.7.1 wheels:
   - ✅ `torch-2.7.1-cp311-cp311-manylinux_2_28_x86_64.whl` (linux + x86_64 + py311 + cp)
   - ✅ `torch-2.7.1-cp311-cp311-manylinux_2_28_aarch64.whl` (linux + aarch64 + py311 + cp)
-  - ❌ `torch-2.7.1-cp310-cp310-manylinux_2_28_x86_64.whl` (Python 3.10 not in version list)
   - ❌ `torch-2.7.1-cp311-none-macosx_11_0_arm64.whl` (macOS not in OS list)
 
 - Example 2: Prefetching for multiple Python versions on macOS ARM64
@@ -193,7 +191,6 @@ The pip backend will be updated to filter Python wheels based on user-provided p
   Matches torch 2.7.1 wheels:
   - ✅ `torch-2.7.1-cp311-none-macosx_11_0_arm64.whl` (macosx + arm64 + py311 + cp)
   - ✅ `torch-2.7.1-cp312-none-macosx_11_0_arm64.whl` (macosx + arm64 + py312 + cp)
-  - ✅ `torch-2.7.1-cp310-none-macosx_11_0_arm64.whl` (macosx + arm64 + cp310 with abi=none works for py311/312)
   - ❌ `torch-2.7.1-cp313-cp313t-macosx_14_0_arm64.whl` (Python 3.13 not in version list)
   - ❌ `torch-2.7.1-cp312-cp312-manylinux_2_28_aarch64.whl` (Linux not in OS list)
 

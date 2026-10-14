@@ -6,9 +6,11 @@ from unittest import mock
 import pytest
 
 from hermeto import APP_NAME
-from hermeto.core.errors import PackageManagerError
+from hermeto.core.errors import PackageManagerError, PackageRejected
 from hermeto.core.package_managers.javascript.yarn_classic.main import (
-    _verify_corepack_yarn_version,
+    _fetch_dependencies,
+    _install_and_verify_yarn,
+    _resolve_classic_version,
     _verify_no_offline_mirror_collisions,
 )
 from hermeto.core.package_managers.javascript.yarn_classic.resolver import (
@@ -21,19 +23,42 @@ from hermeto.core.package_managers.javascript.yarn_classic.resolver import (
 from hermeto.core.rooted_path import RootedPath
 
 
+@mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_cmd")
+def test_fetch_dependencies_uses_selected_yarn_for_both_installs(
+    mock_run_cmd: mock.Mock, rooted_tmp_path: RootedPath
+) -> None:
+    yarn_bin = Path("/cache/yarn/1.22.22/bin/yarn.js")
+
+    _fetch_dependencies(
+        rooted_tmp_path, rooted_tmp_path.join_within_root("output"), yarn_bin=yarn_bin
+    )
+
+    assert mock_run_cmd.call_count == 2
+    for call in mock_run_cmd.call_args_list:
+        assert call.kwargs["cmd"][:3] == ["node", str(yarn_bin), "install"]
+    assert "--frozen-lockfile" in mock_run_cmd.call_args_list[0].kwargs["cmd"]
+    assert "--offline" in mock_run_cmd.call_args_list[1].kwargs["cmd"]
+
+
+def test_resolve_classic_version_preserves_checksum() -> None:
+    spec = "yarn@1.22.22+sha1." + "a" * 40
+
+    version = _resolve_classic_version(spec)
+
+    assert str(version) == spec.removeprefix("yarn@")
+
+
 @pytest.mark.parametrize(
     "yarn_version_output, error_message",
     [
         pytest.param(
             "1.21.0",
-            f"{APP_NAME} expected corepack to install yarn >=1.22.0,<2.0.0, but "
-            "instead found yarn@1.21.0",
+            f"{APP_NAME} expected yarn@1.22.22 but the installed binary reports yarn@1.21.0",
             id="disallowed_version_too_low",
         ),
         pytest.param(
             "2.0.0",
-            f"{APP_NAME} expected corepack to install yarn >=1.22.0,<2.0.0, but "
-            "instead found yarn@2.0.0",
+            f"{APP_NAME} expected yarn@1.22.22 but the installed binary reports yarn@2.0.0",
             id="disallowed_version_too_high",
         ),
         pytest.param(
@@ -43,17 +68,114 @@ from hermeto.core.rooted_path import RootedPath
         ),
     ],
 )
+@mock.patch("hermeto.core.package_managers.javascript.yarn_classic.main.install_yarn")
 @mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_yarn_cmd")
-def test_verify_corepack_yarn_version_fail(
+def test_install_and_verify_yarn_fail(
     mock_run_yarn_cmd: mock.Mock,
+    mock_install_yarn: mock.Mock,
     yarn_version_output: str,
     error_message: str,
     tmp_path: Path,
 ) -> None:
+    mock_install_yarn.return_value = Path("/fake/yarn.js")
     mock_run_yarn_cmd.return_value = yarn_version_output
 
+    project = mock.Mock()
+    project.source_dir = RootedPath(tmp_path)
+    project.package_json = mock.MagicMock()
+    project.package_json.get.return_value = None
+
     with pytest.raises(PackageManagerError, match=error_message):
-        _verify_corepack_yarn_version(RootedPath(tmp_path), env={"foo": "bar"})
+        _install_and_verify_yarn(project)
+
+
+@pytest.mark.parametrize("version", ["1.21.0", "1.22.0-rc.1", "2.0.0-rc.1", "2.0.0", "3.6.2"])
+@mock.patch("hermeto.core.package_managers.javascript.yarn_classic.main.install_yarn")
+@mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_yarn_cmd")
+def test_unsupported_classic_version_is_rejected_before_installation(
+    mock_run_yarn_cmd: mock.Mock,
+    mock_install_yarn: mock.Mock,
+    rooted_tmp_path: RootedPath,
+    version: str,
+) -> None:
+    project = mock.Mock(
+        source_dir=rooted_tmp_path, package_json={"packageManager": f"yarn@{version}"}
+    )
+    mock_install_yarn.return_value = Path("/fake/yarn.js")
+    mock_run_yarn_cmd.return_value = version
+
+    with pytest.raises(PackageRejected, match="Yarn Classic"):
+        _install_and_verify_yarn(project)
+
+    mock_install_yarn.assert_not_called()
+    mock_run_yarn_cmd.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "package_manager, expected_release, reported_version",
+    [
+        (None, "1.22.22", "1.22.19"),
+        ("yarn@1.22.19", "1.22.19", "1.22.22"),
+        ("yarn@1.22.22-rc.1", "1.22.22-rc.1", "1.22.22"),
+        ("yarn@1.22.22+sha1." + "a" * 40, "1.22.22", "1.22.19"),
+    ],
+)
+@mock.patch("hermeto.core.package_managers.javascript.yarn_classic.main.install_yarn")
+@mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_yarn_cmd")
+def test_classic_version_must_match_selected_release(
+    mock_run_yarn_cmd: mock.Mock,
+    mock_install_yarn: mock.Mock,
+    rooted_tmp_path: RootedPath,
+    package_manager: str | None,
+    expected_release: str,
+    reported_version: str,
+) -> None:
+    project = mock.Mock(
+        source_dir=rooted_tmp_path, package_json={"packageManager": package_manager}
+    )
+    mock_install_yarn.return_value = Path("/fake/yarn.js")
+    mock_run_yarn_cmd.return_value = reported_version
+
+    with pytest.raises(PackageManagerError) as exc_info:
+        _install_and_verify_yarn(project)
+
+    assert str(exc_info.value) == (
+        f"{APP_NAME} expected yarn@{expected_release} but the installed binary "
+        f"reports yarn@{reported_version}."
+    )
+
+
+@pytest.mark.parametrize(
+    "package_manager, reported_version",
+    [
+        (None, "1.22.22"),
+        ("yarn@1.22.0", "1.22.0"),
+        ("yarn@1.22.19", "1.22.19"),
+        ("yarn@1.22.22-rc.1", "1.22.22-rc.1"),
+        ("yarn@1.22.22+sha1." + "a" * 40, "1.22.22"),
+    ],
+)
+@mock.patch("hermeto.core.package_managers.javascript.yarn_classic.main.install_yarn")
+@mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_yarn_cmd")
+def test_classic_selected_release_is_accepted(
+    mock_run_yarn_cmd: mock.Mock,
+    mock_install_yarn: mock.Mock,
+    rooted_tmp_path: RootedPath,
+    package_manager: str | None,
+    reported_version: str,
+) -> None:
+    project = mock.Mock(
+        source_dir=rooted_tmp_path, package_json={"packageManager": package_manager}
+    )
+    yarn_bin = Path("/fake/yarn.js")
+    mock_install_yarn.return_value = yarn_bin
+    mock_run_yarn_cmd.return_value = reported_version
+
+    assert _install_and_verify_yarn(project) == yarn_bin
+
+    expected_version = (package_manager or "yarn@1.22.22").removeprefix("yarn@")
+    mock_install_yarn.assert_called_once()
+    assert str(mock_install_yarn.call_args.args[0]) == expected_version
 
 
 @pytest.mark.parametrize(

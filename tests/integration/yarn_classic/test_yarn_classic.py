@@ -17,9 +17,10 @@ SCENARIOS_DIR = Path(__file__).parent / "scenarios"
             utils.TestParameters(
                 packages=({"path": ".", "type": "yarn"},),
                 check_output=False,
-                expected_output="Processing the request using yarn@1.22.",
+                expected_error=ExitError.ERR_PACKAGE_REJECTED,
+                expected_output="packageManager specifies yarn@3.6.2, but the project has a Yarn Classic",
             ),
-            id="yarn_classic_corepack_ignored",
+            id="yarn_classic_vs_berry_mismatch",
         ),
         pytest.param(
             utils.TestParameters(

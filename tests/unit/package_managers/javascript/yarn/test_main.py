@@ -35,7 +35,7 @@ from hermeto.core.package_managers.javascript.yarn.main import (
     _resolve_yarn_project,
     _set_yarnrc_configuration,
     _strip_workspace_scripts,
-    _verify_corepack_yarn_version,
+    _verify_yarn_version,
 )
 from hermeto.core.package_managers.javascript.yarn.project import (
     PackageJson,
@@ -103,7 +103,8 @@ class YarnVersions(Enum):
         ),
     ],
 )
-@mock.patch("hermeto.core.package_managers.javascript.yarn.main._verify_corepack_yarn_version")
+@mock.patch("hermeto.core.package_managers.javascript.yarn.main._verify_yarn_version")
+@mock.patch("hermeto.core.package_managers.javascript.yarn.main.install_yarn")
 @mock.patch("hermeto.core.package_managers.javascript.yarn.main.get_semver_from_package_manager")
 @mock.patch("hermeto.core.package_managers.javascript.yarn.main.get_semver_from_yarn_path")
 @mock.patch("hermeto.core.package_managers.javascript.yarn.project.PackageJson.write")
@@ -111,7 +112,8 @@ def test_configure_yarn_version(
     mock_package_json_write: mock.Mock,
     mock_yarn_path_semver: mock.Mock,
     mock_package_manager_semver: mock.Mock,
-    mock_verify_corepack: mock.Mock,
+    mock_install_yarn: mock.Mock,
+    mock_verify_yarn: mock.Mock,
     yarn_path_version: semver.version.Version | None,
     package_manager_version: semver.version.Version | None,
 ) -> None:
@@ -120,6 +122,7 @@ def test_configure_yarn_version(
     mock_project.package_json = PackageJson(mock.Mock(), {})
     mock_yarn_path_semver.return_value = yarn_path_version
     mock_package_manager_semver.return_value = package_manager_version
+    mock_install_yarn.return_value = Path("/fake/yarn.js")
 
     _configure_yarn_version(mock_project)
 
@@ -130,34 +133,38 @@ def test_configure_yarn_version(
         assert mock_project.package_json.get("packageManager") is None
         mock_package_json_write.assert_not_called()
 
-    mock_verify_corepack.assert_called_once_with(
-        yarn_path_version or package_manager_version, mock_project.source_dir
+    expected_version = yarn_path_version or package_manager_version
+    mock_install_yarn.assert_called_once_with(expected_version)
+    mock_verify_yarn.assert_called_once_with(
+        expected_version, mock_project.source_dir, Path("/fake/yarn.js")
     )
 
 
 @pytest.mark.parametrize(
-    "corepack_yarn_version",
+    "reported_yarn_version",
     [
         pytest.param("2.0.0", id="yarn_versions_do_not_match"),
         pytest.param("2", id="invalid_semver"),
     ],
 )
 @mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_yarn_cmd")
-def test_corepack_installed_correct_yarn_version_fail(
+def test_verify_yarn_version_fail(
     mock_run_yarn_cmd: mock.Mock,
-    corepack_yarn_version: str,
+    reported_yarn_version: str,
     rooted_tmp_path: RootedPath,
 ) -> None:
     expected_yarn_version = YarnVersions.YARN_V1.value
-    mock_run_yarn_cmd.return_value = corepack_yarn_version
+    mock_run_yarn_cmd.return_value = reported_yarn_version
+    yarn_bin = Path("/fake/yarn.js")
 
     with pytest.raises(PackageManagerError):
-        _verify_corepack_yarn_version(expected_yarn_version, rooted_tmp_path)
+        _verify_yarn_version(expected_yarn_version, rooted_tmp_path, yarn_bin)
 
     mock_run_yarn_cmd.assert_called_once_with(
         ["--version"],
         rooted_tmp_path,
-        env={"COREPACK_ENABLE_DOWNLOAD_PROMPT": "0", "YARN_IGNORE_PATH": "true"},
+        env={"YARN_IGNORE_PATH": "true"},
+        yarn_bin=yarn_bin,
     )
 
 
@@ -325,7 +332,7 @@ def test_workspace_focus_rejected_for_yarn_v3(
     rooted_tmp_path: RootedPath,
 ) -> None:
     """Workspace focus is rejected when the project uses Yarn v3."""
-    mock_configure_version.return_value = semver.Version.parse("3.6.1")
+    mock_configure_version.return_value = (semver.Version.parse("3.6.1"), Path("/fake/yarn.js"))
     project = mock.Mock(source_dir=rooted_tmp_path, yarn_rc=mock.MagicMock())
 
     with pytest.raises(PackageRejected):
@@ -690,7 +697,8 @@ class TestSetYarnrcConfigurationGitDeps:
 
 class TestResolveYarnProjectGitDepsStrictMode:
     @mock.patch("hermeto.core.package_managers.javascript.yarn.main._parse_lockfile_git_deps")
-    @mock.patch("hermeto.core.package_managers.javascript.yarn.main._verify_corepack_yarn_version")
+    @mock.patch("hermeto.core.package_managers.javascript.yarn.main._verify_yarn_version")
+    @mock.patch("hermeto.core.package_managers.javascript.yarn.main.install_yarn")
     @mock.patch(
         "hermeto.core.package_managers.javascript.yarn.main.get_semver_from_package_manager"
     )
@@ -699,11 +707,13 @@ class TestResolveYarnProjectGitDepsStrictMode:
         self,
         mock_yarn_path: mock.Mock,
         mock_pkg_mgr: mock.Mock,
-        mock_verify_corepack: mock.Mock,
+        mock_install_yarn: mock.Mock,
+        mock_verify_yarn: mock.Mock,
         mock_parse_git_deps: mock.Mock,
     ) -> None:
         mock_yarn_path.return_value = semver.Version.parse("4.0.0")
         mock_pkg_mgr.return_value = semver.Version.parse("4.0.0")
+        mock_install_yarn.return_value = Path("/fake/yarn.js")
         mock_parse_git_deps.return_value = [
             GitDep(
                 name="my-dep",

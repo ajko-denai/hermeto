@@ -8,7 +8,7 @@ import pytest
 from hermeto import APP_NAME
 from hermeto.core.errors import PackageManagerError
 from hermeto.core.package_managers.javascript.yarn_classic.main import (
-    _verify_corepack_yarn_version,
+    _install_and_verify_yarn,
     _verify_no_offline_mirror_collisions,
 )
 from hermeto.core.package_managers.javascript.yarn_classic.resolver import (
@@ -26,14 +26,12 @@ from hermeto.core.rooted_path import RootedPath
     [
         pytest.param(
             "1.21.0",
-            f"{APP_NAME} expected corepack to install yarn >=1.22.0,<2.0.0, but "
-            "instead found yarn@1.21.0",
+            f"{APP_NAME} expected yarn >=1.22.0,<2.0.0, but instead found yarn@1.21.0",
             id="disallowed_version_too_low",
         ),
         pytest.param(
             "2.0.0",
-            f"{APP_NAME} expected corepack to install yarn >=1.22.0,<2.0.0, but "
-            "instead found yarn@2.0.0",
+            f"{APP_NAME} expected yarn >=1.22.0,<2.0.0, but instead found yarn@2.0.0",
             id="disallowed_version_too_high",
         ),
         pytest.param(
@@ -43,17 +41,25 @@ from hermeto.core.rooted_path import RootedPath
         ),
     ],
 )
+@mock.patch("hermeto.core.package_managers.javascript.yarn_classic.main.install_yarn")
 @mock.patch("hermeto.core.package_managers.javascript.yarn.utils.run_yarn_cmd")
-def test_verify_corepack_yarn_version_fail(
+def test_install_and_verify_yarn_fail(
     mock_run_yarn_cmd: mock.Mock,
+    mock_install_yarn: mock.Mock,
     yarn_version_output: str,
     error_message: str,
     tmp_path: Path,
 ) -> None:
+    mock_install_yarn.return_value = Path("/fake/yarn.js")
     mock_run_yarn_cmd.return_value = yarn_version_output
 
+    project = mock.Mock()
+    project.source_dir = RootedPath(tmp_path)
+    project.package_json = mock.MagicMock()
+    project.package_json.get.return_value = None
+
     with pytest.raises(PackageManagerError, match=error_message):
-        _verify_corepack_yarn_version(RootedPath(tmp_path), env={"foo": "bar"})
+        _install_and_verify_yarn(project)
 
 
 @pytest.mark.parametrize(

@@ -1222,10 +1222,14 @@ def test_resolve_packages_deduplicates_workspaces(
     ]
     assert mock_yarn_cmd.call_count == 2
     mock_yarn_cmd.assert_any_call(
-        ["workspace", "app", "info", "--recursive", "--cache", "--json"], rooted_tmp_path
+        ["workspace", "app", "info", "--recursive", "--cache", "--json"],
+        rooted_tmp_path,
+        yarn_bin=None,
     )
     mock_yarn_cmd.assert_any_call(
-        ["workspace", "lib", "info", "--recursive", "--cache", "--json"], rooted_tmp_path
+        ["workspace", "lib", "info", "--recursive", "--cache", "--json"],
+        rooted_tmp_path,
+        yarn_bin=None,
     )
 
 
